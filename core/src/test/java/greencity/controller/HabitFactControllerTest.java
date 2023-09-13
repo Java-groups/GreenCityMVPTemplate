@@ -3,13 +3,11 @@ package greencity.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greencity.converters.UserArgumentResolver;
 import greencity.dto.habitfact.HabitFactPostDto;
-import greencity.dto.language.LanguageDTO;
+import greencity.dto.habitfact.HabitFactUpdateDto;
 import greencity.exception.exceptions.NotFoundException;
 import greencity.exception.handler.CustomExceptionHandler;
 import greencity.service.HabitFactService;
-import greencity.service.LanguageService;
 import greencity.service.UserService;
-import greencity.validator.LanguageTranslationValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.servlet.error.DefaultErrorAttributes;
 import org.springframework.boot.web.servlet.error.ErrorAttributes;
 import org.springframework.data.domain.PageRequest;
@@ -29,10 +26,9 @@ import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.validation.Validator;
 
-import java.util.Arrays;
-import java.util.List;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -52,23 +48,20 @@ public class HabitFactControllerTest {
     private ModelMapper modelMapper;
     @Mock
     private ObjectMapper objectMapper;
-
-    @InjectMocks
-    private LanguageTranslationValidator languageTranslationValidator;
-
     @Mock
-    private LanguageService languageService;
+    private Validator mockValidator;
     private final ErrorAttributes errorAttributes = new DefaultErrorAttributes();
 
     @BeforeEach
     public void setUp() {
+
         this.mockMvc = MockMvcBuilders
                 .standaloneSetup(habitFactController)
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver(),
                         new UserArgumentResolver(userService, modelMapper))
                 .setControllerAdvice(new CustomExceptionHandler(errorAttributes, objectMapper))
+                .setValidator(mockValidator)
                 .build();
-
     }
 
     @Test
@@ -109,43 +102,46 @@ public class HabitFactControllerTest {
 
     @Test
     void saveHabitFactTest() throws Exception {
+
         String content = "{\n" +
                 "  \"habit\": {\n" +
-                "    \"complexity\": 0,\n" +
-                "    \"id\": 0,\n" +
-                "    \"image\": \"string\"\n" +
+                "    \"id\": 1\n" +
                 "  },\n" +
-                "  \"id\": 0,\n" +
                 "  \"translations\": [\n" +
                 "    {\n" +
-                "      \"content\": \"string\",\n" +
-                "      \"factOfDayStatus\": \"POTENTIAL\",\n" +
-                "      \"id\": 0,\n" +
+                "      \"content\": \"content content content\",\n" +
                 "      \"language\": {\n" +
-                "        \"code\": \"string\",\n" +
-                "        \"id\": 0\n" +
+                "        \"code\": \"ua\",\n" +
+                "        \"id\": 1\n" +
+                "      }\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"content\": \"content content content\",\n" +
+                "      \"language\": {\n" +
+                "        \"code\": \"en\",\n" +
+                "        \"id\": 2\n" +
+                "      }\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"content\": \"content content content\",\n" +
+                "      \"language\": {\n" +
+                "        \"code\": \"ru\",\n" +
+                "        \"id\": 3\n" +
                 "      }\n" +
                 "    }\n" +
                 "  ]\n" +
                 "}";
-
-        LanguageDTO uaLanguage = new LanguageDTO(1L, "ua");
-        LanguageDTO enLanguage = new LanguageDTO(2L, "en");
-        LanguageDTO ruLanguage = new LanguageDTO(3L, "ru");
-        List<LanguageDTO> languages = Arrays.asList(uaLanguage, enLanguage, ruLanguage);
-        Mockito.when(languageService.getAllLanguages()).thenReturn(languages);
-        languageTranslationValidator.initialize(null);
 
         mockMvc.perform(post(factsLink)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(content))
                 .andExpect(status().isCreated());
 
-        HabitFactPostDto fact = objectMapper.readValue(content, HabitFactPostDto.class);
+        ObjectMapper mapper = new ObjectMapper();
+        HabitFactPostDto dto = mapper.readValue(content, HabitFactPostDto.class);
 
-        verify(habitFactService).save(fact);
+        verify(habitFactService).save(dto);
     }
-
 
     @Test
     void updateHabitFactTest() throws Exception {
@@ -169,16 +165,20 @@ public class HabitFactControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(content))
                 .andExpect(status().isOk());
+
+        ObjectMapper mapper = new ObjectMapper();
+        HabitFactUpdateDto dto = mapper.readValue(content, HabitFactUpdateDto.class);
+        verify(habitFactService).update(dto, 1L);
     }
 
     @Test
     void deleteFailedHabitFactTest() throws Exception {
 
-        Mockito.when(habitFactService.delete(99L)).thenThrow(NotFoundException.class);
+        Mockito.when(habitFactService.delete(1L)).thenThrow(NotFoundException.class);
 
-        mockMvc.perform(delete(factsLink + "/{id}", 99))
+        mockMvc.perform(delete(factsLink + "/{id}", 1))
                 .andExpect(status().isNotFound());
 
-        verify(habitFactService).delete(99L);
+        verify(habitFactService).delete(1L);
     }
 }
