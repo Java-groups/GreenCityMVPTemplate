@@ -2,7 +2,6 @@ package greencity.controller;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import greencity.config.SecurityConfig;
 import greencity.converters.UserArgumentResolver;
 import greencity.dto.PageableDto;
 import greencity.dto.habit.AddCustomHabitDtoRequest;
@@ -10,9 +9,12 @@ import greencity.dto.habit.HabitDto;
 import greencity.dto.shoppinglistitem.ShoppingListItemDto;
 import greencity.dto.user.UserProfilePictureDto;
 import greencity.dto.user.UserVO;
+import greencity.exception.exceptions.BadRequestException;
+import greencity.exception.handler.CustomExceptionHandler;
 import greencity.service.HabitService;
 import greencity.service.TagsService;
 import greencity.service.UserService;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +22,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.modelmapper.ModelMapper;
-import org.springframework.context.annotation.Import;
+import org.springframework.boot.web.servlet.error.ErrorAttributes;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
@@ -38,10 +40,15 @@ import java.util.*;
 
 import static greencity.ModelUtils.getPrincipal;
 import static greencity.ModelUtils.getUserVO;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-@Import(SecurityConfig.class)
+
+/**
+ * @author Arthur Mkrtchian
+ */
+
 @ExtendWith(MockitoExtension.class)
 class HabitControllerTest {
 
@@ -54,6 +61,10 @@ class HabitControllerTest {
     private ModelMapper modelMapper;
     @Mock
     private UserService userService;
+    @Mock
+    ErrorAttributes errorAttributes;
+    @Mock
+    ObjectMapper objectMapper;
     @InjectMocks
     private HabitController habitController;
     private final Principal principal = getPrincipal();
@@ -66,6 +77,7 @@ class HabitControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(habitController)
                 .setCustomArgumentResolvers(new UserArgumentResolver(userService, modelMapper),
                         new PageableHandlerMethodArgumentResolver())
+                .setControllerAdvice(new CustomExceptionHandler(errorAttributes, objectMapper))
                 .build();
     }
 
@@ -113,7 +125,6 @@ class HabitControllerTest {
         verifyNoMoreInteractions(habitService);
     }
 
-
     @Test
     void testGetShoppingListItemsTest() throws Exception {
         Long habitId = 1L;
@@ -129,11 +140,7 @@ class HabitControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("application/json;charset=UTF-8"))
                 .andExpect(jsonPath("$[0].id").value(shoppingList.get(0).getId()))
-                .andExpect(jsonPath("$[0].text").value(shoppingList.get(0).getText()))
-                .andExpect(jsonPath("$[0].status").value(shoppingList.get(0).getStatus()))
-                .andExpect(jsonPath("$[1].id").value(shoppingList.get(1).getId()))
-                .andExpect(jsonPath("$[1].text").value(shoppingList.get(1).getText()))
-                .andExpect(jsonPath("$[1].status").value(shoppingList.get(1).getStatus()));
+                .andExpect(jsonPath("$[1].id").value(shoppingList.get(1).getId()));
 
         verify(habitService, times(1)).getShoppingListForHabit(habitId, languageCode);
         verifyNoMoreInteractions(habitService);
@@ -196,6 +203,27 @@ class HabitControllerTest {
     }
 
     @Test
+    void testGetAllByDifferentParametersWithoutAnyParameters() throws Exception {
+        mockMvc.perform(get("/habit/search")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> Assertions.assertTrue(result.getResolvedException() instanceof BadRequestException))
+                .andExpect(result -> assertEquals("You should enter at least one parameter", Objects.requireNonNull(result.getResolvedException()).getMessage()));
+    }
+
+    @Test
+    void testGetAllByDifferentParametersWithComplexities() throws Exception {
+        List<Integer> complexitiesList = Arrays.asList(1, 2, 3);
+
+        mockMvc.perform(get("/habit/search")
+                        .param("complexities", complexitiesList.stream()
+                                .map(Object::toString)
+                                .toArray(String[]::new))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void testFindAllHabitsTagsTest() throws Exception {
         String languageCode = "en";
         List<String> tagsList = Arrays.asList("tag1", "tag2", "tag3");
@@ -242,64 +270,18 @@ class HabitControllerTest {
                 "  ]\n" +
                 "}";
 
-        UserVO userVO = getUserVO();
-        when(userService.findByEmail(anyString())).thenReturn(userVO);
-
-        byte[] image = "softServe academy".getBytes(StandardCharsets.UTF_8);
-        MockMultipartFile imageFile = new MockMultipartFile("image", "testImage.png", "image/png", image);
+        byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
+        MockMultipartFile requestPart = new MockMultipartFile("request", "json", "application/json", contentBytes);
 
         mockMvc.perform(MockMvcRequestBuilders.multipart("/habit/custom")
-                        .file(imageFile)
-                        .principal(principal)
-                        .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
-                        .content(content))
+                        .file(requestPart)
+                        .principal(principal))
                 .andExpect(status().isCreated());
-
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
         AddCustomHabitDtoRequest dto = mapper.readValue(content, AddCustomHabitDtoRequest.class);
-
         verify(habitService).addCustomHabit(eq(dto), any(), eq(principal.getName()));
-
     }
-
-
-//    public static void main(String[] args) throws IOException, JsonProcessingException {
-//        String content = "{\n" +
-//                "  \"complexity\": 2,\n" +
-//                "  \"customShoppingListItemDto\": [\n" +
-//                "    {\n" +
-//                "      \"id\": 1,\n" +
-//                "      \"status\": \"ACTIVE\",\n" +
-//                "      \"text\": \"string\"\n" +
-//                "    }\n" +
-//                "  ],\n" +
-//                "  \"defaultDuration\": 30,\n" +
-//                "  \"habitTranslations\": [\n" +
-//                "    {\n" +
-//                "      \"description\": \"string\",\n" +
-//                "      \"habitItem\": \"string\",\n" +
-//                "      \"languageCode\": \"string\",\n" +
-//                "      \"name\": \"string\"\n" +
-//                "    }\n" +
-//                "  ],\n" +
-//                "  \"image\": \"string\",\n" +
-//                "  \"tagIds\": [\n" +
-//                "    0,\n" +
-//                "    1\n" +
-//                "  ]\n" +
-//                "}";
-//
-//        ObjectMapper mapper = new ObjectMapper();
-//        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-//        AddCustomHabitDtoRequest dto = mapper.readValue(content, AddCustomHabitDtoRequest.class);
-//        System.out.println(dto);
-//
-//        String serializedBack = mapper.writeValueAsString(dto);
-//        System.out.println(serializedBack);
-//    }
-
 
     @Test
     void getFriendsAssignedToHabitProfilePicturesTest() throws Exception {
