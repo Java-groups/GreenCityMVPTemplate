@@ -27,9 +27,14 @@ public class ExceptionResponse {
      * Constructor with parameters.
      */
     public ExceptionResponse(Map<String, Object> errorAttributes) {
-        this.setPath((String) errorAttributes.get("path"));
-        this.setMessage((String) errorAttributes.get("message"));
-        this.setTimeStamp(errorAttributes.get("timestamp").toString());
-        this.setTrace((String) errorAttributes.get("trace"));
+        Object path = errorAttributes.get("path");
+        Object message = errorAttributes.get("message");
+        Object timestamp = errorAttributes.get("timestamp");
+        Object trace = errorAttributes.get("trace");
+
+        this.setPath(path != null ? path.toString() : null);
+        this.setMessage(message != null ? message.toString() : null);
+        this.setTimeStamp(timestamp != null ? timestamp.toString() : null);
+        this.setTrace(trace != null ? trace.toString() : null);
     }
 }
